@@ -1,6 +1,12 @@
 import { ApiError } from '../utils/apiError.js';
 import { supabaseAdmin } from '../config/supabase.js';
-import { deleteResourcePhoto } from '../utils/storageHelper.js';
+import {
+  deleteResourcePhoto,
+  buildStoragePath,
+  uploadResourcePhoto,
+  getResourcePhotoSignedUrl,
+} from '../utils/storageHelper.js';
+import crypto from 'crypto';
 
 // Established valid conditions in PostgreSQL constraint (resources_condition_check)
 const ALLOWED_CONDITIONS = ['new', 'good', 'fair'];
@@ -72,6 +78,29 @@ const formatResource = (row) => ({
 });
 
 /**
+ * Attaches a temporary signed URL to each resource that has a photo.
+ * Required because the resource-images bucket is private: public URLs return 403.
+ * Signed URLs are short-lived (1 hour by default) and safe to return to the frontend.
+ *
+ * @param {Array} resources - Formatted resource objects
+ * @returns {Promise<Array>} Resources with photo_signed_url attached where applicable
+ */
+const attachSignedUrls = async (resources) => {
+  return await Promise.all(
+    resources.map(async (resource) => {
+      if (resource.photo_url) {
+        try {
+          resource.photo_signed_url = await getResourcePhotoSignedUrl(resource.photo_url, 3600);
+        } catch {
+          resource.photo_signed_url = null;
+        }
+      }
+      return resource;
+    })
+  );
+};
+
+/**
  * @desc    Create a new resource
  * @route   POST /api/resources
  * @access  Private (Requires Bearer token)
@@ -85,7 +114,7 @@ export const createResource = async (req, res, next) => {
       throw new ApiError(401, 'Unauthorized. Valid user authentication required.');
     }
 
-    const { title, description, category, condition, photo_url } = req.body;
+    const { title, description, category, condition } = req.body;
 
     // 2. Validate required fields
     if (!title || typeof title !== 'string' || !title.trim()) {
@@ -115,20 +144,30 @@ export const createResource = async (req, res, next) => {
     const cleanTitle = title.trim();
     const cleanCategory = category.trim();
     const cleanDescription = description && typeof description === 'string' ? description.trim() : null;
-    const cleanPhotoUrl = photo_url && typeof photo_url === 'string' ? photo_url.trim() : null;
 
-    // 3. Construct insert payload using existing 9 database columns only
+    // 3. Handle image upload (single image from Multer, stored in private Supabase bucket)
+    let photoUrl = null;
+    if (req.file) {
+      const safeName = String(req.file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, '_').replace(/\s+/g, '_');
+      const fileRef = crypto.randomUUID();
+      const filePath = `resources/${ownerId}/${fileRef}-${safeName}`;
+
+      await uploadResourcePhoto(req.file.buffer, filePath, req.file.mimetype);
+      photoUrl = filePath;
+    }
+
+    // 4. Construct insert payload using existing 9 database columns only
     const newResource = {
       owner_id: ownerId,
       title: cleanTitle,
       description: cleanDescription,
       category: cleanCategory,
       condition: normalizedCondition,
-      photo_url: cleanPhotoUrl,
+      photo_url: photoUrl,
       status: INITIAL_STATUS,
     };
 
-    // 4. Insert into Supabase resources table using RLS user client
+    // 5. Insert into Supabase resources table using RLS user client
     const client = req.userClient || supabaseAdmin;
     const { data: createdResource, error } = await client
       .from('resources')
@@ -137,6 +176,10 @@ export const createResource = async (req, res, next) => {
       .single();
 
     if (error) {
+      // Rollback: delete the uploaded image if the DB insert failed
+      if (photoUrl) {
+        await deleteResourcePhoto(photoUrl);
+      }
       throw new ApiError(500, `Database error creating resource: ${error.message}`);
     }
 
@@ -145,11 +188,15 @@ export const createResource = async (req, res, next) => {
     }
 
     // 5. Return created resource with consistent JSON envelope
+    const resource = formatResource(createdResource);
+    if (resource.photo_url) {
+      resource.photo_signed_url = await getResourcePhotoSignedUrl(resource.photo_url, 3600);
+    }
     res.status(201).json({
       success: true,
       message: 'Resource created successfully',
       data: {
-        resource: formatResource(createdResource),
+        resource,
       },
     });
   } catch (error) {
@@ -227,6 +274,7 @@ export const getAllResources = async (req, res, next) => {
     }
 
     const formattedResources = (resources || []).map(formatResource);
+    const resourcesWithUrls = await attachSignedUrls(formattedResources);
 
     res.status(200).json({
       success: true,
@@ -238,8 +286,8 @@ export const getAllResources = async (req, res, next) => {
           limit: parsedLimit,
           totalPages: Math.ceil((totalCount || 0) / parsedLimit),
         },
-        count: formattedResources.length,
-        resources: formattedResources,
+        count: resourcesWithUrls.length,
+        resources: resourcesWithUrls,
       },
     });
   } catch (error) {
@@ -294,11 +342,22 @@ export const getResourceById = async (req, res, next) => {
       throw new ApiError(404, 'Resource not found.');
     }
 
+    // 4. Access control: anyone may view available resources; non-available
+    //    resources are visible only to the owner.
+    const isOwner = req.user && req.user.id === resource.owner_id;
+    if (!isOwner && resource.status !== 'available') {
+      throw new ApiError(403, 'Forbidden. You do not have access to this resource.');
+    }
+
+    const resourceData = formatResource(resource);
+    if (resourceData.photo_url) {
+      resourceData.photo_signed_url = await getResourcePhotoSignedUrl(resourceData.photo_url, 3600);
+    }
     res.status(200).json({
       success: true,
       message: 'Resource retrieved successfully',
       data: {
-        resource: formatResource(resource),
+        resource: resourceData,
       },
     });
   } catch (error) {
@@ -333,13 +392,14 @@ export const getMyResources = async (req, res, next) => {
     }
 
     const formattedResources = (resources || []).map(formatResource);
+    const resourcesWithUrls = await attachSignedUrls(formattedResources);
 
     res.status(200).json({
       success: true,
       message: 'User resources retrieved successfully',
       data: {
-        count: formattedResources.length,
-        resources: formattedResources,
+        count: resourcesWithUrls.length,
+        resources: resourcesWithUrls,
       },
     });
   } catch (error) {
@@ -389,7 +449,28 @@ export const updateResource = async (req, res, next) => {
       );
     }
 
-    // 4. Security checks: Prevent modifying protected fields
+    // 4. Handle image replacement or deletion (image is managed via multipart upload, not body text)
+    let resolvedPhotoUrl = existingResource.photo_url || null;
+    let oldPhotoPath = existingResource.photo_url || null;
+    let newlyUploadedPath = null;
+
+    const deleteImageFlag = req.body.delete_image === 'true' || req.body.delete_image === true;
+
+    if (req.file) {
+      // Replace with a newly uploaded image
+      const safeName = String(req.file.originalname)
+        .replace(/[^a-zA-Z0-9.\-_]/g, '_')
+        .replace(/\s+/g, '_');
+      const fileRef = crypto.randomUUID();
+      newlyUploadedPath = `resources/${userId}/${fileRef}-${safeName}`;
+      await uploadResourcePhoto(req.file.buffer, newlyUploadedPath, req.file.mimetype);
+      resolvedPhotoUrl = newlyUploadedPath;
+    } else if (deleteImageFlag) {
+      // Remove the existing image
+      resolvedPhotoUrl = null;
+    }
+
+    // 5. Security checks: Prevent modifying protected fields
     const {
       id: reqId,
       owner_id,
@@ -401,7 +482,6 @@ export const updateResource = async (req, res, next) => {
       category,
       condition,
       status,
-      photo_url,
     } = req.body;
 
     if (owner_id !== undefined || ownerId !== undefined) {
@@ -465,8 +545,9 @@ export const updateResource = async (req, res, next) => {
       updates.description = description === null ? null : String(description).trim();
     }
 
-    if (photo_url !== undefined) {
-      updates.photo_url = photo_url === null ? null : String(photo_url).trim();
+    // Update photo_url only when the image was replaced or deleted
+    if (resolvedPhotoUrl !== existingResource.photo_url) {
+      updates.photo_url = resolvedPhotoUrl;
     }
 
     // Ensure at least one field is provided
@@ -500,14 +581,27 @@ export const updateResource = async (req, res, next) => {
       .single();
 
     if (updateError) {
+      // Rollback: remove the newly uploaded image if the DB update failed
+      if (newlyUploadedPath) {
+        await deleteResourcePhoto(newlyUploadedPath);
+      }
       throw new ApiError(500, `Database error updating resource: ${updateError.message}`);
     }
 
+    // Clean up the old image after a successful replacement or deletion
+    if (oldPhotoPath && (newlyUploadedPath || (resolvedPhotoUrl === null && oldPhotoPath))) {
+      await deleteResourcePhoto(oldPhotoPath);
+    }
+
+    const resourceData = formatResource(updatedResource);
+    if (resourceData.photo_url) {
+      resourceData.photo_signed_url = await getResourcePhotoSignedUrl(resourceData.photo_url, 3600);
+    }
     res.status(200).json({
       success: true,
       message: 'Resource updated successfully',
       data: {
-        resource: formatResource(updatedResource),
+        resource: resourceData,
       },
     });
   } catch (error) {
@@ -583,6 +677,58 @@ export const deleteResource = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get a temporary signed URL for a resource image (private bucket)
+ * @route   GET /api/resources/:id/signed-url
+ * @access  Private (owner) or Public if resource is available
+ */
+export const getResourceSignedUrl = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !UUID_REGEX.test(id)) {
+      throw new ApiError(400, 'Invalid resource ID. Must be a valid UUID.');
+    }
+
+    const { data: resource, error } = await supabaseAdmin
+      .from('resources')
+      .select('id, owner_id, photo_url, status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      throw new ApiError(500, `Database error: ${error.message}`);
+    }
+
+    if (!resource) {
+      throw new ApiError(404, 'Resource not found.');
+    }
+
+    if (!resource.photo_url) {
+      throw new ApiError(404, 'This resource has no image.');
+    }
+
+    // Access control: owner can always access; others only if resource is publicly available
+    const isOwner = req.user && req.user.id === resource.owner_id;
+    if (!isOwner && resource.status !== 'available') {
+      throw new ApiError(403, 'Forbidden. You do not have access to this image.');
+    }
+
+    const signedUrl = await getResourcePhotoSignedUrl(resource.photo_url, 3600);
+
+    res.status(200).json({
+      success: true,
+      message: 'Signed URL generated successfully',
+      data: {
+        signedUrl,
+        expiresIn: 3600,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   createResource,
   getAllResources,
@@ -590,4 +736,5 @@ export default {
   getMyResources,
   updateResource,
   deleteResource,
+  getResourceSignedUrl,
 };

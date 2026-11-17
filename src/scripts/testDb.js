@@ -24,7 +24,7 @@ async function runDbTest() {
     console.error(`💬 Message: ${result.message}`);
     console.error(`⚠️ Error:   ${result.details.error}`);
     console.error('\n🛠️ Troubleshooting Steps:');
-    console.error('   1. Open d:/ResourceLoop/.env');
+    console.error('   1. Open D:/ResourceLoop/.env');
     console.error('   2. Set SUPABASE_URL to your Supabase Project URL (e.g. https://xyz.supabase.co)');
     console.error('   3. Set SUPABASE_ANON_KEY to your Supabase anon/public API key');
     console.error('   4. (Optional) Set SUPABASE_SERVICE_ROLE_KEY for admin tasks');

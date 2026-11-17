@@ -1,0 +1,842 @@
+{
+  "info": {
+    "name": "ResourceLoop Backend API",
+    "_postman_id": "resource-loop-backend-collection",
+    "description": "Complete Postman collection for the ResourceLoop backend modules. Uses collection variables for baseUrl and accessToken. No credentials are stored here.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string",
+      "description": "Backend base URL"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string",
+      "description": "JWT access token obtained from Login"
+    },
+    {
+      "key": "resourceId",
+      "value": "",
+      "type": "string",
+      "description": "UUID of a resource (set after Add Resource / Get My Resources)"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "1. Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"SecurePass123\",\n  \"name\": \"Alice Student\",\n  \"location\": \"Campus\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "signup"]
+            },
+            "description": "Register a new user. Validates email, password (min 6 chars), and name. Uses Supabase admin to create the user and profile."
+          },
+          "response": [
+            {
+              "name": "201 Success",
+              "status": "201",
+              "body": "{\n  \"success\": true,\n  \"message\": \"User registered successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"Alice Student\",\n      \"email\": \"student@example.com\",\n      \"location\": \"Campus\",\n      \"createdAt\": \"<timestamp>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "400 Invalid input",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Password must be at least 6 characters long.\"\n}"
+            },
+            {
+              "name": "409 Email already exists",
+              "status": "409",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"A user with this email address already exists. Please log in.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "2. Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"SecurePass123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Authenticate and obtain access/refresh tokens. Save accessToken to the collection variable for use in protected endpoints."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Login successful\",\n  \"data\": {\n    \"user\": { \"id\": \"<uuid>\", \"email\": \"student@example.com\", ... },\n    \"session\": {\n      \"accessToken\": \"<jwt>\",\n      \"refreshToken\": \"<jwt>\",\n      \"expiresIn\": 3600,\n      \"tokenType\": \"bearer\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Invalid credentials",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Invalid email or password.\"\n}"
+            },
+            {
+              "name": "403 Email not confirmed",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Email has not been confirmed yet. Please verify your email.\"\n}"
+            },
+            {
+              "name": "400 Missing fields",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Email and password are required.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "3. Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Revoke the current session. Requires a valid Bearer token."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Logout successful\"\n}"
+            },
+            {
+              "name": "401 No / invalid token",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required. Please provide a valid Bearer token in the Authorization header.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "User Profiles",
+      "item": [
+        {
+          "name": "4. Get user profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "Fetch the authenticated user's own profile. Identity comes from the JWT, not the request body."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"User profile retrieved successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"Alice Student\",\n      \"email\": \"student@example.com\",\n      \"location\": \"Campus\",\n      \"createdAt\": \"<timestamp>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required. Please provide a valid Bearer token in the Authorization header.\"\n}"
+            },
+            {
+              "name": "404 Profile not found",
+              "status": "404",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 404,\n  \"message\": \"User profile not found.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "5. Update user profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice Updated\",\n  \"location\": \"New Campus\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "Update name and/or location. Only fields belonging to the authenticated user can be changed. Email and ID changes are rejected."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"User profile updated successfully\",\n  \"data\": {\n    \"user\": {\n      \"id\": \"<uuid>\",\n      \"name\": \"Alice Updated\",\n      \"email\": \"student@example.com\",\n      \"location\": \"New Campus\",\n      \"createdAt\": \"<timestamp>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Unauthorized. Valid user authentication required.\"\n}"
+            },
+            {
+              "name": "400 Email change attempted",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Email cannot be updated through this endpoint. Email is managed securely via Supabase Auth.\"\n}"
+            },
+            {
+              "name": "403 ID tampering",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You are not allowed to specify or modify user IDs.\"\n}"
+            },
+            {
+              "name": "400 No updatable fields",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Please provide at least one field to update: \\\"name\\\" or \\\"location\\\".\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Edge: Access another user's profile (should fail)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "There is no endpoint to view another user's profile by ID. The profile endpoint always returns the authenticated user's own data. Attempting to supply a different user ID is ignored/rejected."
+          },
+          "response": [
+            {
+              "name": "200 Returns own profile only",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": { \"user\": { \"id\": \"<authenticated-user-uuid>\" ... } }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Resources",
+      "item": [
+        {
+          "name": "6. Add resource",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Used Textbook",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Biology textbook, great condition",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "books",
+                  "type": "text"
+                },
+                {
+                  "key": "condition",
+                  "value": "good",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"]
+            },
+            "description": "Create a new resource with an optional image. Authentication required. The image field is optional; if omitted, photo_url is null."
+          },
+          "response": [
+            {
+              "name": "201 Success",
+              "status": "201",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Resource created successfully\",\n  \"data\": {\n    \"resource\": {\n      \"id\": \"<uuid>\",\n      \"ownerId\": \"<uuid>\",\n      \"title\": \"Used Textbook\",\n      \"description\": \"Biology textbook, great condition\",\n      \"category\": \"books\",\n      \"condition\": \"good\",\n      \"photo_url\": \"resources/<userId>/<uuid>-<filename>\",\n      \"photo_signed_url\": \"<signed-url>\",\n      \"status\": \"available\",\n      \"createdAt\": \"<timestamp>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required. Please provide a valid Bearer token in the Authorization header.\"\n}"
+            },
+            {
+              "name": "400 Missing title/category/condition",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Title is required and must be a non-empty string.\"\n}"
+            },
+            {
+              "name": "415 Invalid image type",
+              "status": "415",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 415,\n  \"message\": \"Unsupported file type \\\"application/pdf\\\". Allowed types: image/jpeg, image/png, image/webp.\"\n}"
+            },
+            {
+              "name": "413 Image too large",
+              "status": "413",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 413,\n  \"message\": \"Image too large. Maximum size is 5 MB.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "7. Get all resources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources?search=book&category=books&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"],
+              "query": [
+                { "key": "search", "value": "book" },
+                { "key": "category", "value": "books" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Browse available resources. Public endpoint (optional auth). Supports search, category filter, and pagination. Only status='available' resources are returned."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Resources retrieved successfully\",\n  \"data\": {\n    \"pagination\": { \"total\": 25, \"page\": 1, \"limit\": 10, \"totalPages\": 3 },\n    \"count\": 10,\n    \"resources\": [\n      { \"id\": \"<uuid>\", \"ownerId\": \"<uuid>\", \"title\": \"...\", \"photo_signed_url\": \"<signed-url>\" }\n    ]\n  }\n}"
+            },
+            {
+              "name": "400 Invalid pagination",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": ...\n}"
+            }
+          ]
+        },
+        {
+          "name": "8. Get resource by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources/{{resourceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources", "{{resourceId}}"]
+            },
+            "description": "Fetch a single resource by UUID. Public for available resources; owner-only for unavailable resources."
+          },
+          "response": [
+            {
+              "name": "200 Success (available)",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Resource retrieved successfully\",\n  \"data\": {\n    \"resource\": {\n      \"id\": \"<uuid>\",\n      \"ownerId\": \"<uuid>\",\n      \"title\": \"Used Textbook\",\n      \"photo_url\": \"resources/<userId>/<uuid>-<filename>\",\n      \"photo_signed_url\": \"<signed-url>\",\n      \"status\": \"available\",\n      \"owner\": { \"id\": \"<uuid>\", \"name\": \"Alice\", \"location\": \"Campus\" }\n    }\n  }\n}"
+            },
+            {
+              "name": "400 Invalid UUID",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Invalid resource ID. Must be a valid UUID.\"\n}"
+            },
+            {
+              "name": "404 Not found",
+              "status": "404",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 404,\n  \"message\": \"Resource not found.\"\n}"
+            },
+            {
+              "name": "403 Unavailable resource accessed by non-owner",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You do not have access to this resource.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "9. Get my resources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "resources"]
+            },
+            "description": "Fetch all resources owned by the authenticated user (any status), newest first."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"User resources retrieved successfully\",\n  \"data\": {\n    \"count\": 3,\n    \"resources\": [\n      { \"id\": \"<uuid>\", \"title\": \"...\", \"status\": \"borrowed\", \"photo_signed_url\": \"<signed-url>\" }\n    ]\n  }\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Unauthorized. Valid user authentication required.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "10. Update resource",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Used Textbook (Revised)",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "books",
+                  "type": "text"
+                },
+                {
+                  "key": "condition",
+                  "value": "fair",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "delete_image",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources/{{resourceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources", "{{resourceId}}"]
+            },
+            "description": "Update a resource you own. Owner-only; ownership is verified before any change. To replace the image, attach a new `image` file. To remove the image, set `delete_image=true` (no file)."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Resource updated successfully\",\n  \"data\": {\n    \"resource\": {\n      \"id\": \"<uuid>\",\n      \"title\": \"Used Textbook (Revised)\",\n      \"condition\": \"fair\",\n      \"photo_signed_url\": \"<signed-url>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required...\"\n}"
+            },
+            {
+              "name": "403 Not the owner",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You do not have permission to edit this resource because you are not the owner.\"\n}"
+            },
+            {
+              "name": "404 Not found",
+              "status": "404",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 404,\n  \"message\": \"Resource not found.\"\n}"
+            },
+            {
+              "name": "400 No fields to update",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Please provide at least one valid field to update.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "11. Delete resource",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources/{{resourceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources", "{{resourceId}}"]
+            },
+            "description": "Delete a resource you own. Removes the associated storage photo and the DB record."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Resource deleted successfully\"\n}"
+            },
+            {
+              "name": "401 Not authenticated",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required...\"\n}"
+            },
+            {
+              "name": "403 Not the owner",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You do not have permission to delete this resource because you are not the owner.\"\n}"
+            },
+            {
+              "name": "404 Not found",
+              "status": "404",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 404,\n  \"message\": \"Resource not found.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Search & Filtering",
+      "item": [
+        {
+          "name": "12. Search resources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources?search=biology",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"],
+              "query": [
+                { "key": "search", "value": "biology" }
+              ]
+            },
+            "description": "Case-insensitive search across title and description. Empty search returns all available resources."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": { \"resources\": [ { \"title\": \"Biology Textbook\" } ], \"count\": 1 }\n}"
+            },
+            {
+              "name": "200 No matches",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": { \"resources\": [], \"count\": 0 }\n}"
+            }
+          ]
+        },
+        {
+          "name": "13. Filter resources by category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources?category=electronics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"],
+              "query": [
+                { "key": "category", "value": "electronics" }
+              ]
+            },
+            "description": "Case-insensitive exact category match. Blank category returns all available resources."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": { \"resources\": [ { \"category\": \"electronics\" } ], \"count\": 5 }\n}"
+            },
+            {
+              "name": "200 No matches in category",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": { \"resources\": [], \"count\": 0 }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Edge: Combined search + category + pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/resources?search=book&category=books&page=2&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"],
+              "query": [
+                { "key": "search", "value": "book" },
+                { "key": "category", "value": "books" },
+                { "key": "page", "value": "2" },
+                { "key": "limit", "value": "5" }
+              ]
+            },
+            "description": "Combine search, category filter, and pagination in one request."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"pagination\": { \"total\": 12, \"page\": 2, \"limit\": 5, \"totalPages\": 3 },\n    \"count\": 5,\n    \"resources\": []\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Image Uploads",
+      "item": [
+        {
+          "name": "14. Upload resource image (create)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Laptop",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "electronics",
+                  "type": "text"
+                },
+                {
+                  "key": "condition",
+                  "value": "good",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"]
+            },
+            "description": "Create a resource with an image. Accepts one image file under field `image`. Validates MIME type (jpeg/png/webp) and size (≤5 MB). Uploads to the private Supabase bucket; stores the storage path in photo_url."
+          },
+          "response": [
+            {
+              "name": "201 Success",
+              "status": "201",
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"resource\": {\n      \"photo_url\": \"resources/<userId>/<uuid>-<filename>\",\n      \"photo_signed_url\": \"<signed-url>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "415 Invalid file type",
+              "status": "415",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 415,\n  \"message\": \"Unsupported file type \\\"text/plain\\\". Allowed types: image/jpeg, image/png, image/webp.\"\n}"
+            },
+            {
+              "name": "413 File too large",
+              "status": "413",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 413,\n  \"message\": \"Image too large. Maximum size is 5 MB.\"\n}"
+            },
+            {
+              "name": "400 Wrong field name",
+              "status": "400",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 400,\n  \"message\": \"Unexpected file field. Use the field name \\\"image\\\".\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "15. Replace resource image",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources/{{resourceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources", "{{resourceId}}"]
+            },
+            "description": "Replace the image on a resource you own. Uploads the new image, deletes the old one from storage, and updates photo_url. Ownership is verified first."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "status": "200",
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"resource\": {\n      \"photo_url\": \"resources/<userId>/<new-uuid>-<filename>\",\n      \"photo_signed_url\": \"<signed-url>\"\n    }\n  }\n}"
+            },
+            {
+              "name": "403 Not the owner",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You do not have permission to edit this resource because you are not the owner.\"\n}"
+            },
+            {
+              "name": "415 Invalid replacement image",
+              "status": "415",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 415,\n  \"message\": \"Unsupported file type ...\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Edge: Upload image to someone else's resource",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources/<other-user-resource-uuid>",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources", "<other-user-resource-uuid>"]
+            },
+            "description": "Attempt to replace an image on a resource owned by another user. Must be rejected with 403."
+          },
+          "response": [
+            {
+              "name": "403 Forbidden",
+              "status": "403",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 403,\n  \"message\": \"Forbidden. You do not have permission to edit this resource because you are not the owner.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Edge: Protected route without token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "No Auth",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "misc",
+                  "type": "text"
+                },
+                {
+                  "key": "condition",
+                  "value": "new",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resources",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "resources"]
+            },
+            "description": "Attempt to create a resource without any Authorization header. Must be rejected with 401."
+          },
+          "response": [
+            {
+              "name": "401 Unauthorized",
+              "status": "401",
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 401,\n  \"message\": \"Authentication required. Please provide a valid Bearer token in the Authorization header.\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

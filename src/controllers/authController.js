@@ -169,10 +169,15 @@ export const login = async (req, res, next) => {
  */
 export const logout = async (req, res, next) => {
   try {
-    const token = req.token;
+    // Revoke the session using Supabase Auth admin API.
+    // signOut(uid) expects a user UUID (from the verified token), not a JWT string.
+    const userId = req.user?.id;
 
-    // Revoke the session using Supabase Auth admin API
-    const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(token);
+    if (!userId) {
+      throw new ApiError(401, 'Unauthorized. Valid user authentication required.');
+    }
+
+    const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(userId);
 
     if (signOutError) {
       // If session was already expired or revoked, still treat logout as successful

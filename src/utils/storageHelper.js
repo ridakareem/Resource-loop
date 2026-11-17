@@ -63,8 +63,85 @@ export const deleteResourcePhoto = async (photoUrl) => {
   }
 };
 
+/**
+ * Generates a storage object path for a resource image.
+ * Format: resources/{userId}/{resourceId}-{sanitizedFileName}
+ *
+ * @param {string} userId - Owner user ID (used for path namespacing, not for access control)
+ * @param {string} resourceId - Resource UUID (used for path namespacing)
+ * @param {string} originalName - Original file name
+ * @returns {string}
+ */
+export const buildStoragePath = (userId, resourceId, originalName) => {
+  const safeName = String(originalName)
+    .replace(/[^a-zA-Z0-9.\-_]/g, '_')
+    .replace(/\s+/g, '_');
+  return `resources/${userId}/${resourceId}-${safeName}`;
+};
+
+/**
+ * Uploads an image buffer to the Supabase Storage bucket using the service-role
+ * client (backend only). Service-role credentials are never exposed to the frontend.
+ *
+ * @param {Buffer} fileBuffer - File contents (from Multer memory storage)
+ * @param {string} filePath - Storage object path
+ * @param {string} mimetype - File MIME type
+ * @returns {Promise<{ path: string, fullPath: string, bucket: string }>}
+ */
+export const uploadResourcePhoto = async (fileBuffer, filePath, mimetype) => {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase admin client is not initialized. Configure SUPABASE_SERVICE_ROLE_KEY.');
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(BUCKET_NAME)
+    .upload(filePath, fileBuffer, {
+      contentType: mimetype,
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (error) {
+    throw new Error(`Supabase Storage upload failed: ${error.message}`);
+  }
+
+  return {
+    path: data.path,
+    fullPath: data.fullPath,
+    bucket: BUCKET_NAME,
+  };
+};
+
+/**
+ * Generates a temporary signed URL for a private bucket object.
+ * The URL is time-limited and can be used by the frontend to display the image
+ * without exposing the object publicly.
+ *
+ * @param {string} filePath - Storage object path
+ * @param {number} expiresIn - Seconds until the signed URL expires (default 3600 / 1 hour)
+ * @returns {Promise<string>} Signed URL
+ */
+export const getResourcePhotoSignedUrl = async (filePath, expiresIn = 3600) => {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase admin client is not initialized. Configure SUPABASE_SERVICE_ROLE_KEY.');
+  }
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(BUCKET_NAME)
+    .createSignedUrl(filePath, expiresIn);
+
+  if (error) {
+    throw new Error(`Failed to generate signed URL: ${error.message}`);
+  }
+
+  return data.signedUrl;
+};
+
 export default {
   BUCKET_NAME,
   extractStoragePath,
   deleteResourcePhoto,
+  buildStoragePath,
+  uploadResourcePhoto,
+  getResourcePhotoSignedUrl,
 };
