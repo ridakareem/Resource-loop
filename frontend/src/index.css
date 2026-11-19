@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #f2f4f9;
+  --color-card: #ffffff;
+  --color-ink: #0f1b3d;
+  --color-ink-soft: #4a5578;
+  --color-line: #dde2ee;
+  --color-cobalt: #2b3fd6;
+  --color-cobalt-deep: #1f2fa8;
+  --color-cobalt-tint: #e6e9fb;
+  --color-marigold: #f5b82e;
+  --color-marigold-tint: #fdf0cc;
+  --color-sage: #2f7d5b;
+  --color-sage-tint: #dcf0e6;
+  --color-rose: #c2415a;
+  --color-rose-tint: #f9e1e6;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-cobalt);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-cobalt text-white hover:bg-cobalt-deep;
+  }
+  .btn-dark {
+    @apply bg-ink text-white hover:bg-[#1c2a55];
+  }
+  .btn-ghost {
+    @apply border border-line bg-white text-ink hover:border-ink;
+  }
+  .btn-danger {
+    @apply border border-rose/30 bg-white text-rose hover:bg-rose-tint;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-white px-4 py-2.5 text-[15px] text-ink placeholder:text-ink-soft/60 focus:border-cobalt focus:outline-none focus:ring-4 focus:ring-cobalt/15;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:border-ink hover:text-ink;
+  }
+  .chip[aria-pressed="true"] {
+    @apply border-ink bg-ink text-white;
+  }
+}
+
+/* The ring on the home page is the one decorative moment in the interface. */
+@keyframes ring-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ring-turn {
+  animation: ring-turn 28s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(var(--r, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(var(--r, 0deg));
+  }
+}
+.slip {
+  animation: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0s);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop {
+  animation: pop 0.18s ease-out both;
+}
+
+@keyframes pulse-line {
+  50% {
+    opacity: 0.5;
+  }
+}
+.skeleton {
+  background: #e6e9f2;
+  animation: pulse-line 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-turn,
+  .slip,
+  .pop,
+  .skeleton {
+    animation: none !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
